@@ -8,7 +8,7 @@ import time
 import re
 
 unknownPrompt = 'Unknown face - click \'y\' to add to database'
-typeNamePrompt = 'Type person\'s name and press \'1\' to accept' 
+typeNamePrompt = 'Type person\'s name and press \'1\' to accept'
 
 pictures_path = 'pics'
 attendance_path = 'attendanceLists'
@@ -19,6 +19,8 @@ resizeFactor = 4
 
 fileNamesList = os.listdir(pictures_path)
 
+detectedFramesCount = 0
+detectedFramesThreshold = 5
 # print(fileNamesList)
 
 for fileName in fileNamesList:
@@ -78,11 +80,14 @@ while True:
         faceMatchIndex = np.argmin(faceDistance)
 
         if matches[faceMatchIndex]:
+            detectedFramesCount += 1
             cv2.rectangle(img, (left * resizeFactor, top * resizeFactor), (right * resizeFactor, bottom * resizeFactor), (0, 255 ,0), 3)
             matchName = databaseNames[faceMatchIndex].upper()
             cv2.putText(img, matchName, (left * resizeFactor, top * resizeFactor - 5), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 255 ,0))
             # print(matchName)
-            markPresent(matchName, nameList=nameList)
+            if detectedFramesCount >= detectedFramesThreshold:
+                markPresent(matchName, nameList=nameList)
+                detectedFramesCount = 0
         else:
             key = cv2.waitKey(1) & 0xFF
             newName = ''
