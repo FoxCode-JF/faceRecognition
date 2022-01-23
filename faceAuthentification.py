@@ -1,3 +1,4 @@
+from tkinter import Frame
 import cv2
 from face_recognition_models import face_recognition_model_location
 import numpy as np
@@ -10,11 +11,16 @@ import re
 unknownPrompt = 'Unknown face - click \'y\' to add to database'
 typeNamePrompt = 'Type person\'s name and press \'1\' to accept'
 
+shape_model = "large"
+detector_model = "hog"
 pictures_path = 'pics'
 attendance_path = 'attendanceLists'
 images = []
 databaseNames = []
-resizeFactor = 4
+resizeFactor = 3
+totalFrames = 0
+totalTime = 0
+lostFramesCount = 0
 
 fileNamesList = os.listdir(pictures_path)
 
@@ -30,7 +36,8 @@ def findEncodings(images):
     encodedList = []
     for img in images:
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        encodedImg = face_recognition.face_encodings(img)[0]
+        # img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        encodedImg = face_recognition.face_encodings(img, model=shape_model)[0]
         encodedList.append(encodedImg)
     return encodedList
 
@@ -38,7 +45,8 @@ def getImageEncoding(imgName):
     img = cv2.imread(f'{pictures_path}/{imgName}.jpg')
     images.append(img)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    encodedImg = face_recognition.face_encodings(img)[0]
+    # img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    encodedImg = face_recognition.face_encodings(img, model=shape_model)[0]
     return encodedImg
 
 def markPresent(name):
@@ -56,7 +64,7 @@ def markPresent(name):
             entry = line.split(',')
             nameList.append(entry[0])
         
-        print(nameList)
+        # print(nameList)
         if name not in nameList:
             now = datetime.now()
             time_str = now.strftime('%H:%M:%S')
@@ -67,30 +75,40 @@ encodedListOfFaces = findEncodings(images)
 videoCapture = cv2.VideoCapture(0)
 
 while True:
+    # if totalFrames > 30:
+    #     totalFrames = 0
+    #     totalTime = 0
+
+    # totalFrames += 1
+
+    start = time.time()
     success, img = videoCapture.read()
     imgSmall = cv2.resize(img, (0,0), None, 1/resizeFactor, 1/resizeFactor)
-    faceLocationsInFrame = face_recognition.face_locations(imgSmall)
-    currentFrameEncodings = face_recognition.face_encodings(imgSmall, faceLocationsInFrame)
+    faceLocationsInFrame = face_recognition.face_locations(imgSmall, model=detector_model)
+    currentFrameEncodings = face_recognition.face_encodings(imgSmall, faceLocationsInFrame, model=shape_model)
     
     imgMidHorizontal = int(img.shape[0] / 2)
     imgMidVertical = int(img.shape[1] / 2)
 
+    if not currentFrameEncodings:
+        detectedFramesCount = 0
+        lostFramesCount += 1
     for encoding, location in zip(currentFrameEncodings, faceLocationsInFrame):
         matches = face_recognition.compare_faces(encodedListOfFaces, encoding)
         faceDistance = face_recognition.face_distance(encodedListOfFaces, encoding)
         top, right, bottom, left = location
         faceMatchIndex = np.argmin(faceDistance)
 
+
         if matches[faceMatchIndex]:
             detectedFramesCount += 1
             cv2.rectangle(img, (left * resizeFactor, top * resizeFactor), (right * resizeFactor, bottom * resizeFactor), (0, 255 ,0), 3)
-            matchName = databaseNames[faceMatchIndex].upper()
+            matchName = databaseNames[faceMatchIndex]
             cv2.putText(img, matchName, (left * resizeFactor, top * resizeFactor - 5), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 255 ,0))
-            
-            if matchName not in databaseNames and detectedFramesCount >= detectedFramesThreshold:
+            if detectedFramesCount > detectedFramesThreshold:
                 markPresent(matchName)
-                detectedFramesCount = 0
         else:
+            detectedFramesCount = 0
             key = cv2.waitKey(1) & 0xFF
             newName = ''
             inputChar = ''
@@ -101,7 +119,6 @@ while True:
                     if  re.match("[a-z]", inputChar) or \
                         re.match("[A-Z]", inputChar) or \
                         re.match("[ ]", inputChar):
-                        print(inputChar)
                         myTuple = (newName, inputChar)
                         newName = ''.join(myTuple)
                     
@@ -124,4 +141,11 @@ while True:
     key = cv2.waitKey(1) & 0xFF
     if key == 27:   
         break  # esc to quit
+
+    end = time.time()
+    seconds = end - start
+
+    # totalTime += seconds
+    fps = 1 / seconds 
+    print("Frames per second: {}".format(fps))
 cv2.destroyAllWindows()
